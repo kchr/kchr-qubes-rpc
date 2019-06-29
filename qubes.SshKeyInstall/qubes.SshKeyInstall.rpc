@@ -1,0 +1,58 @@
+#!/bin/bash
+#
+# Receive an SSH key on stdin and install in $HOME/.ssh
+#
+# If an argument is passed it will be used as the key file name.
+#
+#
+get_tmpfile()
+{
+	[ ! -d "${SSH_TMP_DIR}" ] && mkdir -m 700 -p "${SSH_TMP_DIR}"
+	tempfile -d ~/.ssh/tmp -p qubes.sshkey.install
+}
+message()
+{
+	local name="$(vm_name)"
+	notify-send "[${name}] $@"
+}
+vm_name()
+{
+	qubesdb-read /name
+}
+
+SOURCE_VM=$QREXEC_REMOTE_DOMAIN
+
+SSH_KEY_DIR=$HOME/.ssh
+SSH_TMP_DIR=$HOME/.ssh/tmp
+
+SSH_KEY_NAME="$1"
+
+
+# Read data from stdin, timeout after 2 secs
+SSH_KEY_DATA=
+while read -t 2 -n 1024 INDATA; do
+	[ -z "${INDATA}" ] && break
+	SSH_KEY_DATA+="${INDATA}"
+done
+
+# Check if we got any data
+if [ -z "${SSH_KEY_DATA}" ]; then
+	message "No key data received, exiting"
+	exit 1
+fi
+
+
+# Write key to file
+SSH_KEY_TMP="$(get_tmpfile)"
+echo "${SSH_KEY_DATA}" > $SSH_KEY_TMP
+
+# Use randomized name if none was passed as argument
+[ -z "${SSH_KEY_NAME}" ] && SSH_KEY_NAME="id_$(basename ${SSH_KEY_TMP})"
+
+# Install key to SSH directory
+SSH_KEY_OUT="${HOME}/.ssh/${SSH_KEY_NAME}"
+mv $SSH_KEY_TMP "${SSH_KEY_OUT}" && chmod 400 "${SSH_KEY_OUT}"
+
+
+# Show notification
+message "Installed key from $SOURCE_VM: $SSH_KEY_NAME"
